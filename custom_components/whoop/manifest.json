@@ -1,7 +1,7 @@
 {
   "domain": "whoop",
   "name": "Whoop",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "config_flow": true,
   "documentation": "https://github.com/prankstr/hassio-whoop",
   "issue_tracker": "https://github.com/prankstr/hassio-whoop/issues",
