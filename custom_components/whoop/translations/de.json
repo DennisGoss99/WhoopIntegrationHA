@@ -1,0 +1,17 @@
+{
+  "config": {
+    "step": {
+      "pick_implementation": {
+        "title": "Mit Whoop authentifizieren"
+      }
+    },
+    "abort": {
+      "already_configured": "Whoop ist bereits konfiguriert.",
+      "oauth_error": "OAuth-Fehler bei der Authentifizierung.",
+      "missing_configuration": "Client ID und Secret müssen im Whoop Developer Portal erstellt werden."
+    },
+    "create_entry": {
+      "default": "Whoop erfolgreich verbunden."
+    }
+  }
+}

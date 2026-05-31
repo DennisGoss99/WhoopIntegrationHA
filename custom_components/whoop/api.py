@@ -81,3 +81,17 @@ class WhoopApi:
             return records[0] if records else None
         except UpdateFailed:
             return None
+
+    async def get_workouts(self, limit: int = 25) -> list[dict]:
+        try:
+            data = await self._get("/activity/workout", params={"limit": limit})
+            return data.get("records", [])
+        except UpdateFailed:
+            return []
+
+    async def get_sleeps(self, limit: int = 25) -> list[dict]:
+        try:
+            data = await self._get("/activity/sleep", params={"limit": limit})
+            return data.get("records", [])
+        except UpdateFailed:
+            return []

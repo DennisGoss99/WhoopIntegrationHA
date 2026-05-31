@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from datetime import datetime, timezone
+
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -284,6 +286,10 @@ async def async_setup_entry(
     entities += [
         WhoopSensor(coordinator_daily, desc) for desc in DAILY_SENSORS
     ]
+    entities += [
+        WhoopLastUpdatedSensor(coordinator_cycle, "cycle"),
+        WhoopLastUpdatedSensor(coordinator_daily, "daily"),
+    ]
     async_add_entities(entities)
 
 
@@ -297,6 +303,28 @@ def _device_info(profile: dict | None) -> dict:
         "manufacturer": "Whoop",
         "model": "Whoop Band",
     }
+
+
+class WhoopLastUpdatedSensor(CoordinatorEntity, SensorEntity):
+    """Timestamp of the last successful data fetch."""
+
+    _attr_has_entity_name = True
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:clock-check-outline"
+
+    def __init__(self, coordinator: WhoopCoordinator, coordinator_type: str) -> None:
+        super().__init__(coordinator)
+        profile = _safe(coordinator.data, "profile") or {}
+        user_id = profile.get("user_id", "unknown")
+        self._attr_unique_id = f"whoop_{user_id}_last_updated_{coordinator_type}"
+        self._attr_name = f"Last Updated ({coordinator_type.capitalize()})"
+        self._attr_device_info = _device_info(profile)
+
+    @property
+    def native_value(self) -> datetime | None:
+        if self.coordinator.last_update_success:
+            return datetime.now(timezone.utc)
+        return None
 
 
 class WhoopSensor(CoordinatorEntity, SensorEntity):
