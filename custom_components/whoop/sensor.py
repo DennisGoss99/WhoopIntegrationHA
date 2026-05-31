@@ -165,7 +165,7 @@ DAILY_SENSORS: tuple[WhoopSensorDesc, ...] = (
         icon="mdi:clock-outline",
         value_fn=lambda d: (
             round(ms / 60000)
-            if (ms := _safe(d, "sleep", "score", "total_in_bed_time_milli"))
+            if (ms := _safe(d, "sleep", "score", "stage_summary", "total_in_bed_time_milli"))
             else None
         ),
     ),

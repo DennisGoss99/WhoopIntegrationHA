@@ -7,7 +7,7 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_entry_oauth2_flow
+from homeassistant.helpers import config_entry_oauth2_flow, entity_registry as er, device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -92,7 +92,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Clean up stale "unknown" entities/devices from older versions
+    _async_cleanup_unknown_device(hass, entry)
+
     return True
+
+
+def _async_cleanup_unknown_device(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove leftover entities and device created when user_id was not yet known."""
+    entity_reg = er.async_get(hass)
+    device_reg = dr.async_get(hass)
+
+    stale_entities = [
+        e for e in er.async_entries_for_config_entry(entity_reg, entry.entry_id)
+        if e.unique_id and "whoop_unknown_" in e.unique_id
+    ]
+    for entity_entry in stale_entities:
+        _LOGGER.debug("Removing stale entity: %s", entity_entry.entity_id)
+        entity_reg.async_remove(entity_entry.entity_id)
+
+    stale_devices = dr.async_entries_for_config_entry(device_reg, entry.entry_id)
+    for device in stale_devices:
+        identifiers = {i[1] for i in device.identifiers if i[0] == DOMAIN}
+        if "unknown" in identifiers:
+            _LOGGER.debug("Removing stale device: %s", device.id)
+            device_reg.async_remove_device(device.id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
