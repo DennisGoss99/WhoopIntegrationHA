@@ -55,13 +55,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def _fetch_daily() -> dict:
         await _refresh_token()
-        recovery, sleep, workout, body = await asyncio.gather(
+        profile, recovery, sleep, workout, body = await asyncio.gather(
+            api.get_profile(),
             api.get_latest_recovery(),
             api.get_latest_sleep(),
             api.get_latest_workout(),
             api.get_body_measurement(),
         )
         return {
+            "profile": profile,
             "recovery": recovery,
             "sleep": sleep,
             "workout": workout,
