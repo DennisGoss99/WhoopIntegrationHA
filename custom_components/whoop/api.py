@@ -86,7 +86,7 @@ class WhoopApi:
     async def get_current_heart_rate(self) -> int | None:
         """Return the most recent HR sample from the last 5 minutes."""
         now = datetime.now(timezone.utc)
-        start = now - timedelta(minutes=5)
+        start = now - timedelta(minutes=60)
         params = {
             "start": start.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "end": now.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
