@@ -41,6 +41,25 @@ class WhoopSensorDesc(SensorEntityDescription):
 
 
 DAILY_SENSORS: tuple[WhoopSensorDesc, ...] = (
+    # Score states — always visible, shows SCORED / PENDING_SLEEP / UNSCORABLE etc.
+    WhoopSensorDesc(
+        key="recovery_state",
+        name="Recovery State",
+        icon="mdi:heart-pulse",
+        value_fn=lambda d: _safe(d, "recovery", "score_state"),
+    ),
+    WhoopSensorDesc(
+        key="sleep_state",
+        name="Sleep State",
+        icon="mdi:sleep",
+        value_fn=lambda d: _safe(d, "sleep", "score_state"),
+    ),
+    WhoopSensorDesc(
+        key="cycle_state",
+        name="Cycle State",
+        icon="mdi:fire",
+        value_fn=lambda d: _safe(d, "cycle", "score_state"),
+    ),
     # Recovery
     WhoopSensorDesc(
         key="recovery_score",
