@@ -1,0 +1,27 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate with HACS Action
+        uses: hacs/action@main
+        with:
+          category: integration
+
+      - name: Verify manifest version matches release tag
+        run: |
+          MANIFEST_VERSION=$(jq -r '.version' custom_components/whoop/manifest.json)
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          RELEASE_VERSION="${RELEASE_TAG#v}"
+          if [ "$MANIFEST_VERSION" != "$RELEASE_VERSION" ]; then
+            echo "ERROR: manifest.json version ($MANIFEST_VERSION) does not match release tag ($RELEASE_VERSION)"
+            exit 1
+          fi
+          echo "Version check passed: $MANIFEST_VERSION"
