@@ -201,6 +201,12 @@ SENSORS: tuple[WhoopSensorDesc, ...] = (
 
     # ── Workout (/v2/activity/workout) ────────────────────────────────────────
     WhoopSensorDesc(
+        key="workout_sport",
+        name="Latest Workout Sport",
+        icon="mdi:run",
+        value_fn=lambda d: _safe(d, "workout", "sport_name"),
+    ),
+    WhoopSensorDesc(
         key="workout_strain",
         name="Latest Workout Strain",
         state_class=SensorStateClass.MEASUREMENT,
