@@ -12,7 +12,13 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import WhoopApi
-from .const import COORDINATOR, DOMAIN, UPDATE_INTERVAL_MINUTES
+from .const import (
+    COORDINATOR_CYCLE,
+    COORDINATOR_DAILY,
+    CYCLE_UPDATE_INTERVAL_MINUTES,
+    DAILY_UPDATE_INTERVAL_MINUTES,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,35 +39,56 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     api = WhoopApi(async_get_clientsession(hass), oauth_session.token["access_token"])
 
-    async def _fetch() -> dict:
+    async def _refresh_token() -> None:
         await oauth_session.async_ensure_token_valid()
         api.update_access_token(oauth_session.token["access_token"])
 
-        profile, body, recovery, sleep, cycle, workout = await asyncio.gather(
+    async def _fetch_cycle() -> dict:
+        await _refresh_token()
+        profile, cycle = await asyncio.gather(
             api.get_profile(),
-            api.get_body_measurement(),
+            api.get_latest_cycle(),
+        )
+        if cycle is None:
+            raise UpdateFailed("Whoop cycle endpoint returned no data")
+        return {"profile": profile, "cycle": cycle}
+
+    async def _fetch_daily() -> dict:
+        await _refresh_token()
+        recovery, sleep, workout, body = await asyncio.gather(
             api.get_latest_recovery(),
             api.get_latest_sleep(),
-            api.get_latest_cycle(),
             api.get_latest_workout(),
+            api.get_body_measurement(),
         )
-
-        if profile is None and cycle is None:
-            raise UpdateFailed("Whoop API returned no data")
-
         return {
-            "profile": profile,
-            "body": body,
             "recovery": recovery,
             "sleep": sleep,
-            "cycle": cycle,
             "workout": workout,
+            "body": body,
         }
 
-    coordinator = WhoopCoordinator(hass, _fetch)
-    await coordinator.async_config_entry_first_refresh()
+    coordinator_cycle = WhoopCoordinator(
+        hass,
+        name=f"{DOMAIN}_cycle",
+        update_fn=_fetch_cycle,
+        update_interval=timedelta(minutes=CYCLE_UPDATE_INTERVAL_MINUTES),
+    )
+    coordinator_daily = WhoopCoordinator(
+        hass,
+        name=f"{DOMAIN}_daily",
+        update_fn=_fetch_daily,
+        update_interval=timedelta(minutes=DAILY_UPDATE_INTERVAL_MINUTES),
+    )
 
-    hass.data[DOMAIN][entry.entry_id] = {COORDINATOR: coordinator}
+    await coordinator_cycle.async_config_entry_first_refresh()
+    await coordinator_daily.async_config_entry_first_refresh()
+
+    hass.data[DOMAIN][entry.entry_id] = {
+        COORDINATOR_CYCLE: coordinator_cycle,
+        COORDINATOR_DAILY: coordinator_daily,
+    }
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
@@ -74,15 +101,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 class WhoopCoordinator(DataUpdateCoordinator):
-    def __init__(self, hass: HomeAssistant, update_fn) -> None:
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=DOMAIN,
-            update_interval=timedelta(minutes=UPDATE_INTERVAL_MINUTES),
-        )
+    def __init__(self, hass, name, update_fn, update_interval) -> None:
+        super().__init__(hass, _LOGGER, name=name, update_interval=update_interval)
         self._update_fn = update_fn
-        self._last_good_data: dict | None = None
+        self._last_good_data = None
 
     async def _async_update_data(self) -> dict:
         try:
@@ -91,6 +113,6 @@ class WhoopCoordinator(DataUpdateCoordinator):
             return data
         except UpdateFailed:
             if self._last_good_data is not None:
-                _LOGGER.debug("Whoop fetch failed — returning last known data")
+                _LOGGER.debug("%s fetch failed — returning last known data", self.name)
                 return self._last_good_data
             raise

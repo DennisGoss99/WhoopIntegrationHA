@@ -1,4 +1,4 @@
-"""Whoop sensors — based on documented v2 API endpoints only."""
+"""Whoop sensors — cycle (10min) + daily (60min) coordinators."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -17,7 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import WhoopCoordinator
-from .const import COORDINATOR, DOMAIN
+from .const import COORDINATOR_CYCLE, COORDINATOR_DAILY, DOMAIN
 
 
 def _safe(data: dict | None, *keys: str) -> Any:
@@ -35,9 +35,9 @@ class WhoopSensorDesc(SensorEntityDescription):
     attr_fn: Callable[[dict], dict] = field(default=lambda _: {})
 
 
-SENSORS: tuple[WhoopSensorDesc, ...] = (
+# ── Cycle sensors (update every 10 min) ──────────────────────────────────────
 
-    # ── Cycle (/v2/cycle) ─────────────────────────────────────────────────────
+CYCLE_SENSORS: tuple[WhoopSensorDesc, ...] = (
     WhoopSensorDesc(
         key="cycle_state",
         name="Cycle State",
@@ -76,8 +76,12 @@ SENSORS: tuple[WhoopSensorDesc, ...] = (
         icon="mdi:heart-circle",
         value_fn=lambda d: _safe(d, "cycle", "score", "max_heart_rate"),
     ),
+)
 
-    # ── Recovery (/v2/recovery) ───────────────────────────────────────────────
+# ── Daily sensors (update every 60 min) ──────────────────────────────────────
+
+DAILY_SENSORS: tuple[WhoopSensorDesc, ...] = (
+    # Recovery
     WhoopSensorDesc(
         key="recovery_state",
         name="Recovery State",
@@ -126,8 +130,7 @@ SENSORS: tuple[WhoopSensorDesc, ...] = (
         icon="mdi:thermometer",
         value_fn=lambda d: _safe(d, "recovery", "score", "skin_temp_celsius"),
     ),
-
-    # ── Sleep (/v2/activity/sleep) ────────────────────────────────────────────
+    # Sleep
     WhoopSensorDesc(
         key="sleep_state",
         name="Sleep State",
@@ -198,8 +201,7 @@ SENSORS: tuple[WhoopSensorDesc, ...] = (
         icon="mdi:lungs",
         value_fn=lambda d: _safe(d, "sleep", "score", "respiratory_rate"),
     ),
-
-    # ── Workout (/v2/activity/workout) ────────────────────────────────────────
+    # Workout
     WhoopSensorDesc(
         key="workout_sport",
         name="Latest Workout Sport",
@@ -238,8 +240,7 @@ SENSORS: tuple[WhoopSensorDesc, ...] = (
         icon="mdi:fire",
         value_fn=lambda d: _safe(d, "workout", "score", "kilojoule"),
     ),
-
-    # ── Body Measurement (/v2/user/measurement/body) ──────────────────────────
+    # Body measurement
     WhoopSensorDesc(
         key="max_heart_rate",
         name="Max Heart Rate",
@@ -273,8 +274,29 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    coordinator: WhoopCoordinator = hass.data[DOMAIN][entry.entry_id][COORDINATOR]
-    async_add_entities(WhoopSensor(coordinator, desc) for desc in SENSORS)
+    data = hass.data[DOMAIN][entry.entry_id]
+    coordinator_cycle: WhoopCoordinator = data[COORDINATOR_CYCLE]
+    coordinator_daily: WhoopCoordinator = data[COORDINATOR_DAILY]
+
+    entities: list[SensorEntity] = [
+        WhoopSensor(coordinator_cycle, desc) for desc in CYCLE_SENSORS
+    ]
+    entities += [
+        WhoopSensor(coordinator_daily, desc) for desc in DAILY_SENSORS
+    ]
+    async_add_entities(entities)
+
+
+def _device_info(profile: dict | None) -> dict:
+    profile = profile or {}
+    user_id = profile.get("user_id", "unknown")
+    name = f"Whoop ({profile.get('first_name', '')} {profile.get('last_name', '')})".strip()
+    return {
+        "identifiers": {(DOMAIN, str(user_id))},
+        "name": name,
+        "manufacturer": "Whoop",
+        "model": "Whoop Band",
+    }
 
 
 class WhoopSensor(CoordinatorEntity, SensorEntity):
@@ -286,12 +308,7 @@ class WhoopSensor(CoordinatorEntity, SensorEntity):
         profile = _safe(coordinator.data, "profile") or {}
         user_id = profile.get("user_id", "unknown")
         self._attr_unique_id = f"whoop_{user_id}_{desc.key}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, str(user_id))},
-            "name": f"Whoop ({profile.get('first_name', '')} {profile.get('last_name', '')})".strip(),
-            "manufacturer": "Whoop",
-            "model": "Whoop Band",
-        }
+        self._attr_device_info = _device_info(profile)
 
     @property
     def native_value(self) -> Any:

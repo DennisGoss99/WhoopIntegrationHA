@@ -13,6 +13,8 @@ SCOPES = [
     "read:body_measurement",
 ]
 
-UPDATE_INTERVAL_MINUTES = 15
+CYCLE_UPDATE_INTERVAL_MINUTES = 10
+DAILY_UPDATE_INTERVAL_MINUTES = 60
 
-COORDINATOR = "coordinator"
+COORDINATOR_CYCLE = "coordinator_cycle"
+COORDINATOR_DAILY = "coordinator_daily"
