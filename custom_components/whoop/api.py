@@ -1,14 +1,13 @@
-"""Whoop API client using an aiohttp session with bearer token."""
+"""Whoop API client — all endpoints use v2."""
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
 from typing import Any
 
 from aiohttp import ClientSession, ClientResponseError
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
-WHOOP_API_BASE = "https://api.prod.whoop.com/developer/v1"
+WHOOP_API_BASE = "https://api.prod.whoop.com/developer/v2"
 
 
 class WhoopApi:
@@ -37,7 +36,7 @@ class WhoopApi:
         except UpdateFailed:
             raise
         except ClientResponseError as err:
-            raise UpdateFailed(f"Whoop API error: {err}") from err
+            raise UpdateFailed(f"Whoop API error {err.status}: {err.message}") from err
 
     async def get_profile(self) -> dict | None:
         try:
@@ -80,25 +79,5 @@ class WhoopApi:
             data = await self._get("/activity/workout", params={"limit": 1})
             records = data.get("records", [])
             return records[0] if records else None
-        except UpdateFailed:
-            return None
-
-    async def get_current_heart_rate(self) -> int | None:
-        """Return the most recent HR sample from the last 5 minutes."""
-        now = datetime.now(timezone.utc)
-        start = now - timedelta(minutes=60)
-        params = {
-            "start": start.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "end": now.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "order": "t",
-            "limit": 1,
-        }
-        try:
-            data = await self._get("/user/measurement/heart_rate", params=params)
-            values = data.get("values", [])
-            if values:
-                # newest sample is last when order=t (ascending by time)
-                return values[-1].get("data")
-            return None
         except UpdateFailed:
             return None

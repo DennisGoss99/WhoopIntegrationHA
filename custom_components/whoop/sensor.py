@@ -1,4 +1,4 @@
-"""Whoop sensors — daily metrics + live heart rate."""
+"""Whoop sensors — based on documented v2 API endpoints only."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -16,14 +16,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import COORDINATOR_DAILY, COORDINATOR_HR, DOMAIN
 from . import WhoopCoordinator
+from .const import COORDINATOR, DOMAIN
 
-
-# ── helpers ──────────────────────────────────────────────────────────────────
 
 def _safe(data: dict | None, *keys: str) -> Any:
-    """Traverse nested keys safely, returning None if any key is missing."""
     node = data
     for k in keys:
         if not isinstance(node, dict):
@@ -32,35 +29,61 @@ def _safe(data: dict | None, *keys: str) -> Any:
     return node
 
 
-# ── sensor descriptions ───────────────────────────────────────────────────────
-
 @dataclass(frozen=True)
 class WhoopSensorDesc(SensorEntityDescription):
     value_fn: Callable[[dict], Any] = field(default=lambda _: None)
     attr_fn: Callable[[dict], dict] = field(default=lambda _: {})
 
 
-DAILY_SENSORS: tuple[WhoopSensorDesc, ...] = (
-    # Score states — always visible, shows SCORED / PENDING_SLEEP / UNSCORABLE etc.
-    WhoopSensorDesc(
-        key="recovery_state",
-        name="Recovery State",
-        icon="mdi:heart-pulse",
-        value_fn=lambda d: _safe(d, "recovery", "score_state"),
-    ),
-    WhoopSensorDesc(
-        key="sleep_state",
-        name="Sleep State",
-        icon="mdi:sleep",
-        value_fn=lambda d: _safe(d, "sleep", "score_state"),
-    ),
+SENSORS: tuple[WhoopSensorDesc, ...] = (
+
+    # ── Cycle (/v2/cycle) ─────────────────────────────────────────────────────
     WhoopSensorDesc(
         key="cycle_state",
         name="Cycle State",
         icon="mdi:fire",
         value_fn=lambda d: _safe(d, "cycle", "score_state"),
     ),
-    # Recovery
+    WhoopSensorDesc(
+        key="day_strain",
+        name="Day Strain",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:fire",
+        value_fn=lambda d: _safe(d, "cycle", "score", "strain"),
+        attr_fn=lambda d: _safe(d, "cycle", "score") or {},
+    ),
+    WhoopSensorDesc(
+        key="day_kilojoules",
+        name="Day Kilojoules",
+        native_unit_of_measurement="kJ",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:fire-circle",
+        value_fn=lambda d: _safe(d, "cycle", "score", "kilojoule"),
+    ),
+    WhoopSensorDesc(
+        key="day_avg_heart_rate",
+        name="Day Average Heart Rate",
+        native_unit_of_measurement="bpm",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:heart-outline",
+        value_fn=lambda d: _safe(d, "cycle", "score", "average_heart_rate"),
+    ),
+    WhoopSensorDesc(
+        key="day_max_heart_rate",
+        name="Day Max Heart Rate",
+        native_unit_of_measurement="bpm",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:heart-circle",
+        value_fn=lambda d: _safe(d, "cycle", "score", "max_heart_rate"),
+    ),
+
+    # ── Recovery (/v2/recovery) ───────────────────────────────────────────────
+    WhoopSensorDesc(
+        key="recovery_state",
+        name="Recovery State",
+        icon="mdi:heart-pulse",
+        value_fn=lambda d: _safe(d, "recovery", "score_state"),
+    ),
     WhoopSensorDesc(
         key="recovery_score",
         name="Recovery Score",
@@ -71,20 +94,20 @@ DAILY_SENSORS: tuple[WhoopSensorDesc, ...] = (
         attr_fn=lambda d: _safe(d, "recovery", "score") or {},
     ),
     WhoopSensorDesc(
-        key="hrv_rmssd",
-        name="HRV (RMSSD)",
-        native_unit_of_measurement="ms",
-        state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:heart-flash",
-        value_fn=lambda d: _safe(d, "recovery", "score", "hrv_rmssd_milli"),
-    ),
-    WhoopSensorDesc(
         key="resting_heart_rate",
         name="Resting Heart Rate",
         native_unit_of_measurement="bpm",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:heart",
         value_fn=lambda d: _safe(d, "recovery", "score", "resting_heart_rate"),
+    ),
+    WhoopSensorDesc(
+        key="hrv_rmssd",
+        name="HRV (RMSSD)",
+        native_unit_of_measurement="ms",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:heart-flash",
+        value_fn=lambda d: _safe(d, "recovery", "score", "hrv_rmssd_milli"),
     ),
     WhoopSensorDesc(
         key="spo2",
@@ -103,7 +126,14 @@ DAILY_SENSORS: tuple[WhoopSensorDesc, ...] = (
         icon="mdi:thermometer",
         value_fn=lambda d: _safe(d, "recovery", "score", "skin_temp_celsius"),
     ),
-    # Sleep
+
+    # ── Sleep (/v2/activity/sleep) ────────────────────────────────────────────
+    WhoopSensorDesc(
+        key="sleep_state",
+        name="Sleep State",
+        icon="mdi:sleep",
+        value_fn=lambda d: _safe(d, "sleep", "score_state"),
+    ),
     WhoopSensorDesc(
         key="sleep_performance",
         name="Sleep Performance",
@@ -160,40 +190,16 @@ DAILY_SENSORS: tuple[WhoopSensorDesc, ...] = (
             else None
         ),
     ),
-    # Cycle / Strain
     WhoopSensorDesc(
-        key="day_strain",
-        name="Day Strain",
+        key="respiratory_rate",
+        name="Respiratory Rate",
+        native_unit_of_measurement="breaths/min",
         state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:fire",
-        value_fn=lambda d: _safe(d, "cycle", "score", "strain"),
-        attr_fn=lambda d: _safe(d, "cycle", "score") or {},
+        icon="mdi:lungs",
+        value_fn=lambda d: _safe(d, "sleep", "score", "respiratory_rate"),
     ),
-    WhoopSensorDesc(
-        key="day_kilojoules",
-        name="Day Kilojoules",
-        native_unit_of_measurement="kJ",
-        state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:fire-circle",
-        value_fn=lambda d: _safe(d, "cycle", "score", "kilojoule"),
-    ),
-    WhoopSensorDesc(
-        key="day_avg_heart_rate",
-        name="Day Average Heart Rate",
-        native_unit_of_measurement="bpm",
-        state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:heart-outline",
-        value_fn=lambda d: _safe(d, "cycle", "score", "average_heart_rate"),
-    ),
-    WhoopSensorDesc(
-        key="day_max_heart_rate",
-        name="Day Max Heart Rate",
-        native_unit_of_measurement="bpm",
-        state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:heart-circle",
-        value_fn=lambda d: _safe(d, "cycle", "score", "max_heart_rate"),
-    ),
-    # Workout
+
+    # ── Workout (/v2/activity/workout) ────────────────────────────────────────
     WhoopSensorDesc(
         key="workout_strain",
         name="Latest Workout Strain",
@@ -226,45 +232,46 @@ DAILY_SENSORS: tuple[WhoopSensorDesc, ...] = (
         icon="mdi:fire",
         value_fn=lambda d: _safe(d, "workout", "score", "kilojoule"),
     ),
+
+    # ── Body Measurement (/v2/user/measurement/body) ──────────────────────────
+    WhoopSensorDesc(
+        key="max_heart_rate",
+        name="Max Heart Rate",
+        native_unit_of_measurement="bpm",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:heart-circle-outline",
+        value_fn=lambda d: _safe(d, "body", "max_heart_rate"),
+    ),
+    WhoopSensorDesc(
+        key="weight",
+        name="Weight",
+        native_unit_of_measurement="kg",
+        device_class=SensorDeviceClass.WEIGHT,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:scale",
+        value_fn=lambda d: _safe(d, "body", "weight_kilogram"),
+    ),
+    WhoopSensorDesc(
+        key="height",
+        name="Height",
+        native_unit_of_measurement="m",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:human-male-height",
+        value_fn=lambda d: _safe(d, "body", "height_meter"),
+    ),
 )
 
-
-# ── platform setup ────────────────────────────────────────────────────────────
 
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    data = hass.data[DOMAIN][entry.entry_id]
-    coordinator_daily: WhoopCoordinator = data[COORDINATOR_DAILY]
-    coordinator_hr: WhoopCoordinator = data[COORDINATOR_HR]
-
-    entities: list[SensorEntity] = [
-        WhoopDailySensor(coordinator_daily, desc) for desc in DAILY_SENSORS
-    ]
-    entities.append(WhoopHeartRateSensor(coordinator_hr, coordinator_daily))
-
-    async_add_entities(entities)
+    coordinator: WhoopCoordinator = hass.data[DOMAIN][entry.entry_id][COORDINATOR]
+    async_add_entities(WhoopSensor(coordinator, desc) for desc in SENSORS)
 
 
-# ── sensor entities ───────────────────────────────────────────────────────────
-
-def _device_info(profile: dict | None) -> dict:
-    if not profile:
-        profile = {}
-    user_id = profile.get("user_id", "unknown")
-    first = profile.get("first_name", "")
-    last = profile.get("last_name", "")
-    return {
-        "identifiers": {(DOMAIN, str(user_id))},
-        "name": f"Whoop ({first} {last})".strip(),
-        "manufacturer": "Whoop",
-        "model": "Whoop Band",
-    }
-
-
-class WhoopDailySensor(CoordinatorEntity, SensorEntity):
+class WhoopSensor(CoordinatorEntity, SensorEntity):
     _attr_has_entity_name = True
 
     def __init__(self, coordinator: WhoopCoordinator, desc: WhoopSensorDesc) -> None:
@@ -273,7 +280,12 @@ class WhoopDailySensor(CoordinatorEntity, SensorEntity):
         profile = _safe(coordinator.data, "profile") or {}
         user_id = profile.get("user_id", "unknown")
         self._attr_unique_id = f"whoop_{user_id}_{desc.key}"
-        self._attr_device_info = _device_info(profile)
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, str(user_id))},
+            "name": f"Whoop ({profile.get('first_name', '')} {profile.get('last_name', '')})".strip(),
+            "manufacturer": "Whoop",
+            "model": "Whoop Band",
+        }
 
     @property
     def native_value(self) -> Any:
@@ -286,29 +298,3 @@ class WhoopDailySensor(CoordinatorEntity, SensorEntity):
         if self.coordinator.data is None:
             return {}
         return self.entity_description.attr_fn(self.coordinator.data) or {}
-
-
-class WhoopHeartRateSensor(CoordinatorEntity, SensorEntity):
-    """Live heart rate sensor — updates every 60 seconds."""
-
-    _attr_has_entity_name = True
-    _attr_name = "Heart Rate"
-    _attr_native_unit_of_measurement = "bpm"
-    _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_icon = "mdi:heart-pulse"
-
-    def __init__(
-        self,
-        coordinator_hr: WhoopCoordinator,
-        coordinator_daily: WhoopCoordinator,
-    ) -> None:
-        super().__init__(coordinator_hr)
-        self._coordinator_daily = coordinator_daily
-        profile = _safe(coordinator_daily.data, "profile") or {}
-        user_id = profile.get("user_id", "unknown")
-        self._attr_unique_id = f"whoop_{user_id}_heart_rate_live"
-        self._attr_device_info = _device_info(profile)
-
-    @property
-    def native_value(self) -> int | None:
-        return self.coordinator.data
