@@ -66,6 +66,7 @@ Bring your **Whoop** fitness data directly into Home Assistant — no Docker, no
 | Day Average Heart Rate | bpm | Average HR over the current day |
 | Day Max Heart Rate | bpm | Peak HR over the current day |
 | Day Kilojoules | kJ | Energy expenditure for the day |
+| Day Steps | steps | Total step count for the current cycle (empty if no step data) |
 
 ### Recovery — updates every 60 minutes
 
