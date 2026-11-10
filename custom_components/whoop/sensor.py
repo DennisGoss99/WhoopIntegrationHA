@@ -78,6 +78,22 @@ CYCLE_SENSORS: tuple[WhoopSensorDesc, ...] = (
         icon="mdi:heart-circle",
         value_fn=lambda d: _safe(d, "cycle", "score", "max_heart_rate"),
     ),
+    WhoopSensorDesc(
+        key="day_steps",
+        name="Day Steps",
+        native_unit_of_measurement="steps",
+        # Resets with every new cycle; HA treats the drop as a meter reset.
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:shoe-print",
+        # step_count was added to the v2 cycle object on 2026-09-23 and is
+        # null when no step data exists. Fall back to score in case it is
+        # nested there.
+        value_fn=lambda d: (
+            _safe(d, "cycle", "step_count")
+            if _safe(d, "cycle", "step_count") is not None
+            else _safe(d, "cycle", "score", "step_count")
+        ),
+    ),
 )
 
 # ── Daily sensors (update every 60 min) ──────────────────────────────────────
